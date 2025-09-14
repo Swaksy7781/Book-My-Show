@@ -5,7 +5,16 @@ pipeline {
         nodejs 'node23'
     }
     environment {
+        // Define repository and image details as environment variables
+        DOCKERHUB_USERNAME = 'swaksy7781'
+        IMAGE_NAME = "bms"
+        IMAGE_TAG = "latest"
+        FULL_IMAGE_NAME = "${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}"
         SCANNER_HOME = tool 'sonar-scanner'
+        REPO_URL = 'https://github.com/Swaksy7781/Book-My-Show.git'
+        K8S_NAMESPACE = "saurabh-namespace"
+        CLUSTER_NAME  = "cloud-hustlers-eks-cluster"
+        AWS_REGION    = "eu-north-1"
     }
     stages {
         stage('Clean Workspace') {
@@ -21,9 +30,9 @@ pipeline {
         }
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('sonar-scanner') {
+                withSonarQubeEnv('sonar-server') {
                     sh ''' 
-                    $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=BMS \
+                    $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=Book-my-Show \
                     -Dsonar.projectKey=BMS 
                     '''
                 }
@@ -51,24 +60,13 @@ pipeline {
                 '''
             }
         }
-        // stage('OWASP FS Scan') {
-        //     steps {
-        //         dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
-        //         dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
-        //     }
-        // }
-        // stage('Trivy FS Scan') {
-        //     steps {
-        //         sh 'trivy fs . > trivyfs.txt'
-        //     }
-        // }
         stage('Docker Build & Push') {
             steps {
                 script {
-                    withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
+                    withDockerRegistry(credentialsId: 'saurabh-docker-token', toolName: 'docker') {
                         sh ''' 
                         echo "Building Docker image..."
-                        docker build --no-cache -t swkasy7781/bms:latest -f bookmyshow-app/Dockerfile bookmyshow-app
+                        docker build --no-cache -t swaksy7781/bms:latest -f bookmyshow-app/Dockerfile bookmyshow-app
 
                         echo "Pushing Docker image to registry..."
                         docker push swaksy7781/bms:latest
@@ -96,16 +94,54 @@ pipeline {
                 '''
             }
         }
+        stage('Deploy to EKS Cluster') {
+            steps {
+                script {
+                    sh '''
+                    echo "Configuring kubectl for EKS cluster..."
+                    aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
+
+                    echo "Verifying kubeconfig..."
+                    kubectl config view
+
+                    echo "Deploying application to EKS..."
+                    kubectl apply -f deployment.yaml -n ${K8S_NAMESPACE}
+                    kubectl apply -f NodePort-service.yaml -n ${K8S_NAMESPACE}
+
+                    echo "Verifying deployment..."
+                    kubectl get pods -n ${K8S_NAMESPACE}
+                    kubectl get svc -n ${K8S_NAMESPACE}
+                    '''
+                }
+            }
+        }
+
     }
-    // post {
-    //     always {
-    //         emailext attachLog: true,
-    //             subject: "'${currentBuild.result}'",
-    //             body: "Project: ${env.JOB_NAME}<br/>" +
-    //                   "Build Number: ${env.BUILD_NUMBER}<br/>" +
-    //                   "URL: ${env.BUILD_URL}<br/>",
-    //             to: 'kastrokiran@gmail.com',
-    //             attachmentsPattern: 'trivyfs.txt,trivyimage.txt'
-    //     }
-    // }
+
+    post {
+        always {
+            emailext(
+                attachLog: true,
+                from: 'wakasesaurabh@gmail.com',      
+                subject: "[${currentBuild.result}] - Book-my-Show CI/CD Pipeline #${env.BUILD_NUMBER}",
+                body: """
+                    <html>
+                    <body>
+                        <h2>Build Notification</h2>
+                        <p><b>Project:</b> ${env.JOB_NAME}</p>
+                        <p><b>Build Number:</b> ${env.BUILD_NUMBER}</p>
+                        <p><b>Status:</b> ${currentBuild.result}</p>
+                        <p><b>Triggered by:</b> ${currentBuild.getBuildCauses()[0].shortDescription}</p>
+                        <p><b>URL:</b> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                        <hr>
+                        <p>This is an automated email from Jenkins.</p>
+                    </body>
+                    </html>
+                """,
+                to: 'wakasesaurabh@gmail.com',
+                mimeType: 'text/html',                        
+                attachmentsPattern: 'trivyfs.txt,trivyimage.txt'
+            )
+        }
+    }
 }
