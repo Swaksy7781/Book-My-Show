@@ -94,27 +94,27 @@ pipeline {
                 '''
             }
         }
-        stage('Deploy to EKS Cluster') {
-            steps {
-                script {
-                    sh '''
-                    echo "Configuring kubectl for EKS cluster..."
-                    aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
+        // stage('Deploy to EKS Cluster') {
+        //     steps {
+        //         script {
+        //             sh '''
+        //             echo "Configuring kubectl for EKS cluster..."
+        //             aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
 
-                    echo "Verifying kubeconfig..."
-                    kubectl config view
+        //             echo "Verifying kubeconfig..."
+        //             kubectl config view
 
-                    echo "Deploying application to EKS..."
-                    kubectl apply -f deployment.yaml -n ${K8S_NAMESPACE}
-                    kubectl apply -f NodePort-service.yaml -n ${K8S_NAMESPACE}
+        //             echo "Deploying application to EKS..."
+        //             kubectl apply -f deployment.yaml -n ${K8S_NAMESPACE}
+        //             kubectl apply -f NodePort-service.yaml -n ${K8S_NAMESPACE}
 
-                    echo "Verifying deployment..."
-                    kubectl get pods -n ${K8S_NAMESPACE}
-                    kubectl get svc -n ${K8S_NAMESPACE}
-                    '''
-                }
-            }
-        }
+        //             echo "Verifying deployment..."
+        //             kubectl get pods -n ${K8S_NAMESPACE}
+        //             kubectl get svc -n ${K8S_NAMESPACE}
+        //             '''
+        //         }
+        //     }
+        // }
 
     }
 
