@@ -5,7 +5,7 @@ pipeline {
         nodejs 'node23'
     }
     environment {
-        // Define repository and image details as environment variables
+        
         DOCKERHUB_USERNAME = 'swaksy7781'
         IMAGE_NAME = "bms"
         IMAGE_TAG = "latest"
@@ -13,7 +13,7 @@ pipeline {
         SCANNER_HOME = tool 'sonar-scanner'
         REPO_URL = 'https://github.com/Swaksy7781/Book-My-Show.git'
         K8S_NAMESPACE = "saurabh-namespace"
-        CLUSTER_NAME  = "cloud-hustlers-eks-cluster"
+        EKS_CLUSTER_NAME  = "cloud-hustlers-eks-cluster"
         AWS_REGION    = "eu-north-1"
     }
     stages {
