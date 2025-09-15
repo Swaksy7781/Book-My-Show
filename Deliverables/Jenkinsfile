@@ -1,0 +1,120 @@
+pipeline {
+    agent any
+    tools {
+        jdk 'jdk17'
+        nodejs 'node23'
+    }
+    environment {
+        
+        DOCKERHUB_USERNAME = 'swaksy7781'
+        IMAGE_NAME = "bms"
+        IMAGE_TAG = "latest"
+        FULL_IMAGE_NAME = "${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}"
+        SCANNER_HOME = tool 'sonar-scanner'
+        REPO_URL = 'https://github.com/Swaksy7781/Book-My-Show.git'
+    }
+    stages {
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('Checkout from Git') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Swaksy7781/Book-My-Show.git'
+                sh 'ls -la'
+            }
+        }
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonar-server') {
+                    sh ''' 
+                    $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=Book-my-Show \
+                    -Dsonar.projectKey=BMS 
+                    '''
+                }
+            }
+        }
+        stage('Quality Gate') {
+            steps {
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'saurabh-sonar-token'
+                }
+            }
+        }
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                cd bookmyshow-app
+                ls -la
+                if [ -f package.json ]; then
+                    rm -rf node_modules package-lock.json
+                    npm install  # Install fresh dependencies
+                else
+                    echo "Error: package.json not found in bookmyshow-app!"
+                    exit 1
+                fi
+                '''
+            }
+        }
+        stage('Docker Build & Push') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'saurabh-docker-token', toolName: 'docker') {
+                        sh ''' 
+                        echo "Building Docker image..."
+                        docker build --no-cache -t swaksy7781/bms:latest -f bookmyshow-app/Dockerfile bookmyshow-app
+
+                        echo "Pushing Docker image to registry..."
+                        docker push swaksy7781/bms:latest
+                        '''
+                    }
+                }
+            }
+        }
+        stage('Deploy to Container') {
+            steps {
+                sh ''' 
+                echo "Stopping and removing old container..."
+                docker stop bms || true
+                docker rm bms || true
+
+                echo "Running new container on port 3000..."
+                docker run -d --restart=always --name bms -p 3000:3000 swaksy7781/bms:latest
+
+                echo "Checking running containers..."
+                docker ps -a
+
+                echo "Fetching logs..."
+                sleep 5  # Give time for the app to start
+                docker logs bms
+                '''
+            }
+        }
+    }
+    post {
+        always {
+            emailext(
+                attachLog: true,
+                from: 'wakasesaurabh@gmail.com',      
+                subject: "[${currentBuild.result}] - Book-my-Show CI/CD Pipeline #${env.BUILD_NUMBER}",
+                body: """
+                    <html>
+                    <body>
+                        <h2>Build Notification</h2>
+                        <p><b>Project:</b> ${env.JOB_NAME}</p>
+                        <p><b>Build Number:</b> ${env.BUILD_NUMBER}</p>
+                        <p><b>Status:</b> ${currentBuild.result}</p>
+                        <p><b>Triggered by:</b> ${currentBuild.getBuildCauses()[0].shortDescription}</p>
+                        <p><b>URL:</b> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                        <hr>
+                        <p>This is an automated email from Jenkins.</p>
+                    </body>
+                    </html>
+                """,
+                to: 'wakasesaurabh@gmail.com',
+                mimeType: 'text/html'
+            )
+        }
+    }
+}
