@@ -21,17 +21,16 @@ pipeline {
         }
         stage('Checkout from Git') {
             steps {
-                git branch: 'main', url: 'https://github.com/Swaksy7781/Book-My-Show.git'
-                sh 'ls -la'
+                git branch: 'main', url: "${REPO_URL}"
+                sh 'ls -la' // Verify files after checkout
             }
         }
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('sonar-server') {
-                    sh ''' 
-                    $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=Book-my-Show \
-                    -Dsonar.projectKey=BMS 
-                    '''
+                script {
+                    withSonarQubeEnv('sonar-server') {
+                        sh "${SCANNER_HOME}/bin/sonar-scanner -Dsonar.projectName=Book-my-Show -Dsonar.projectKey=BMS"
+                    }
                 }
             }
         }
@@ -44,51 +43,18 @@ pipeline {
         }
         stage('Install Dependencies') {
             steps {
-                sh '''
-                cd bookmyshow-app
-                ls -la
-                if [ -f package.json ]; then
-                    rm -rf node_modules package-lock.json
-                    npm install  # Install fresh dependencies
-                else
-                    echo "Error: package.json not found in bookmyshow-app!"
-                    exit 1
-                fi
-                '''
+                dir('bookmyshow-app') {
+                    sh 'rm -rf node_modules package-lock.json' // Remove old dependencies
+                    sh 'npm install' // Install fresh dependencies
+                }
             }
         }
         stage('Docker Build & Push') {
             steps {
-                script {
-                    withDockerRegistry(credentialsId: 'saurabh-docker-token', toolName: 'docker') {
-                        sh ''' 
-                        echo "Building Docker image..."
-                        docker build --no-cache -t swaksy7781/bms:latest -f bookmyshow-app/Dockerfile bookmyshow-app
-
-                        echo "Pushing Docker image to registry..."
-                        docker push swaksy7781/bms:latest
-                        '''
-                    }
+                withDockerRegistry(credentialsId: 'saurabh-docker-token', toolName: 'docker') {
+                    sh "docker build --no-cache -t ${FULL_IMAGE_NAME} -f bookmyshow-app/Dockerfile bookmyshow-app"
+                    sh "docker push ${FULL_IMAGE_NAME}"
                 }
-            }
-        }
-        stage('Deploy to Container') {
-            steps {
-                sh ''' 
-                echo "Stopping and removing old container..."
-                docker stop bms || true
-                docker rm bms || true
-
-                echo "Running new container on port 3000..."
-                docker run -d --restart=always --name bms -p 3000:3000 swaksy7781/bms:latest
-
-                echo "Checking running containers..."
-                docker ps -a
-
-                echo "Fetching logs..."
-                sleep 5  # Give time for the app to start
-                docker logs bms
-                '''
             }
         }
     }
@@ -117,4 +83,5 @@ pipeline {
             )
         }
     }
+
 }
